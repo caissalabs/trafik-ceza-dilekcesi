@@ -196,59 +196,109 @@
   min-height: 1123px;
   background: #ffffff;
   color: #1a1a1a;
-  font-family:
-    'Times New Roman', 'Liberation Serif', Georgia, 'DejaVu Serif', serif;
-  font-size: 13.5px;
-  line-height: 1.55;
-  padding: 70px 72px 72px;
+  font-family: 'Times New Roman', Georgia, serif;
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 56.7px;
   box-sizing: border-box;
-  text-align: justify;
-  hyphens: auto;
 }
 
-.dp-paper__heading {
-  margin: 16px 0 10px;
-  font-size: 14.5px;
+.dp-paper__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
   font-weight: 700;
-  letter-spacing: 0.4px;
-  color: #000;
-  text-align: left;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
 }
 
-.dp-paper__paragraph {
-  margin: 0 0 10px;
-  text-align: justify;
+.dp-paper__blank {
+  height: 1.5em;
+}
+
+.dp-paper__block {
+  margin-bottom: 1.5em;
 }
 
 .dp-paper__label-row {
+  margin: 0;
   display: grid;
-  grid-template-columns: 175px 14px 1fr;
+  grid-template-columns: 240px 20px 1fr;
   align-items: baseline;
-  gap: 0;
-  margin: 0 0 6px;
-  text-align: left;
+  column-gap: 0;
 }
 
 .dp-paper__label {
   font-weight: 700;
-  text-transform: none;
-  color: #000;
-  letter-spacing: 0.1px;
+  text-align: left;
 }
 
 .dp-paper__colon {
-  font-weight: 700;
-  color: #000;
   text-align: center;
+  font-weight: 700;
 }
 
 .dp-paper__value {
   text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.dp-paper__continuation {
+  margin: 0;
+  margin-left: 260px;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
-.dp-paper__spacer {
-  height: 9px;
+.dp-paper__section-head {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 240px 20px 1fr;
+  align-items: baseline;
+}
+
+.dp-paper__section-head > span:first-child {
+  font-weight: 700;
+  text-align: left;
+}
+
+.dp-paper__section-colon {
+  font-weight: 700;
+  text-align: center;
+}
+
+.dp-paper__paragraph {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-align: justify;
+  text-indent: 1.27cm;
+}
+
+.dp-paper__paragraph--indented {
+  text-indent: 1.27cm;
+}
+
+.dp-paper__section-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.dp-paper__list {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.dp-paper__list li {
+  margin: 0 0 0.45em;
+}
+
+.dp-paper__list li::marker {
+  font-weight: 400;
 }
 
 @media (max-width: 720px) {
