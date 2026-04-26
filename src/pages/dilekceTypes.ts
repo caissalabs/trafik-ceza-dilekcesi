@@ -15,11 +15,24 @@ export interface DilekceFormPayload {
   ekler: string[]
 }
 
+export interface GeneratedDilekceSections {
+  mahkeme: string
+  kararinaItirazEdilen: string
+  konu: string
+  hukukiNedenler: string
+  hukukiDeliller: string[]
+  aciklamalar: string
+  sonucVeIstem: string
+}
+
 export type DilekceResponse = {
   output?: string
+  generated?: GeneratedDilekceSections
   error?: string
 }
 
 export type DilekceRouteState = {
   content: string
+  form: DilekceFormPayload
+  generated: GeneratedDilekceSections
 }

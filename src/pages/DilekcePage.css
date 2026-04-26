@@ -195,12 +195,13 @@
   width: 794px;
   min-height: 1123px;
   background: #ffffff;
-  color: #1a1a1a;
+  color: #000000;
   font-family: 'Times New Roman', Georgia, serif;
   font-size: 16px;
   line-height: 1.5;
   padding: 56.7px;
   box-sizing: border-box;
+  font-weight: 400;
 }
 
 .dp-paper__title {
@@ -211,6 +212,7 @@
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.2px;
+  color: #000000;
 }
 
 .dp-paper__blank {
@@ -232,11 +234,13 @@
 .dp-paper__label {
   font-weight: 700;
   text-align: left;
+  color: #000000;
 }
 
 .dp-paper__colon {
   text-align: center;
   font-weight: 700;
+  color: #000000;
 }
 
 .dp-paper__value {
@@ -244,6 +248,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+  color: #000000;
 }
 
 .dp-paper__continuation {
@@ -251,6 +256,7 @@
   margin-left: 260px;
   white-space: pre-wrap;
   word-break: break-word;
+  color: #000000;
 }
 
 .dp-paper__section-head {
@@ -263,11 +269,13 @@
 .dp-paper__section-head > span:first-child {
   font-weight: 700;
   text-align: left;
+  color: #000000;
 }
 
 .dp-paper__section-colon {
   font-weight: 700;
   text-align: center;
+  color: #000000;
 }
 
 .dp-paper__paragraph {
@@ -277,6 +285,7 @@
   overflow-wrap: anywhere;
   text-align: justify;
   text-indent: 1.27cm;
+  color: #000000;
 }
 
 .dp-paper__paragraph--indented {
@@ -286,6 +295,7 @@
 .dp-paper__section-title {
   margin: 0;
   font-weight: 700;
+  color: #000000;
 }
 
 .dp-paper__list {

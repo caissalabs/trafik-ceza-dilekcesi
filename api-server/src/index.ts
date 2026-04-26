@@ -38,6 +38,16 @@ type DilekceForm = {
   ekler: string[]
 }
 
+type DilekceModelOutput = {
+  mahkeme: string
+  kararinaItirazEdilen: string
+  konu: string
+  hukukiNedenler: string
+  hukukiDeliller: string[]
+  aciklamalar: string
+  sonucVeIstem: string
+}
+
 function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -69,22 +79,29 @@ function normalizeForm(raw: unknown): DilekceForm {
 
 function buildDilekcePrompt(form: DilekceForm): string {
   return `
-Sen bir Türkiye trafik hukuku uzmanı gibi yazacaksın.
+Sen Türkiye trafik hukuku uzmanı gibi davran.
+Sadece geçerli JSON üret. Markdown, açıklama, code block yazma.
 
-Kullanıcının verdiği tutanak bilgilerine göre Türkçe bir "Trafik Cezasına İtiraz Dilekçesi" yaz.
-Çıktı, resmi ve mahkemeye sunulabilir bir dilde olmalı.
-İçerik, örnek formatı takip etmeli:
-- NÖBETÇİ SULH CEZA HAKİMLİĞİ'NE hitabı
-- İTİRAZ EDEN, KARŞI TARAF, TUTANAK TARİHİ, KONU, AÇIKLAMALAR
-- HUKUKİ DELİLLER, HUKUKİ SEBEPLER, NETİCE-İ TALEP
-- en sonda isim-soyisim ve imza alanı
+JSON şeması:
+{
+  "mahkeme": "string",
+  "kararinaItirazEdilen": "string",
+  "konu": "string",
+  "hukukiNedenler": "string",
+  "hukukiDeliller": ["string", "string"],
+  "aciklamalar": "string",
+  "sonucVeIstem": "string"
+}
 
 Kurallar:
-1) Sadece dilekçe metni döndür, açıklama veya markdown kullanma.
-2) Bilgisi olmayan yerlerde makul ve kısa placeholder kullan (örn: "...").
-3) KARŞI TARAF ve yetkili mahkemeyi "cezayı düzenleyen birim" bilgisine göre en uygun şekilde belirle.
-4) Olay akışı bölümünü güçlü ama dürüst bir hukuki anlatımla dilekçeye yedir.
-5) "Ekler" başlığı altında kullanıcının verdiği ekleri maddeler halinde yaz.
+- "mahkeme": örn "KARŞIYAKA NÖBETÇİ SULH CEZA HAKİMLİĞİ"
+- "kararinaItirazEdilen": cezayı düzenleyen birime göre idareyi belirle.
+- "konu": tek paragraf kısa resmi özet.
+- "hukukiNedenler": kısa resmi metin.
+- "hukukiDeliller": en az 2 maddelik dizi döndür (kısa).
+- "aciklamalar": yalnızca açıklamalar paragrafı (uzun, resmi, tutarlı).
+- "sonucVeIstem": yalnızca sonuç ve istem paragrafı (uzun, resmi, talep net).
+- Bilinmeyen bilgi için "..." kullan.
 
 KULLANICI VERİLERİ:
 - Cezayı Düzenleyen Birim: ${form.birim || '...'}
@@ -102,6 +119,38 @@ KULLANICI VERİLERİ:
 - Olay Akışı ve Ek Hususlar: ${form.olayAkisi || '...'}
 - Ekler: ${form.ekler.length > 0 ? form.ekler.join(', ') : '...'}
 `.trim()
+}
+
+function parseModelOutput(text: string): DilekceModelOutput {
+  const fallback: DilekceModelOutput = {
+    mahkeme: '... NÖBETÇİ SULH CEZA HAKİMLİĞİ',
+    kararinaItirazEdilen: '...',
+    konu: '...',
+    hukukiNedenler: '...',
+    hukukiDeliller: ['...'],
+    aciklamalar: '...',
+    sonucVeIstem: '...',
+  }
+
+  try {
+    const parsed = JSON.parse(text) as Partial<DilekceModelOutput>
+    const hukukiDeliller = Array.isArray(parsed.hukukiDeliller)
+      ? parsed.hukukiDeliller.map((x) => cleanText(x)).filter(Boolean)
+      : []
+
+    return {
+      mahkeme: cleanText(parsed.mahkeme) || fallback.mahkeme,
+      kararinaItirazEdilen:
+        cleanText(parsed.kararinaItirazEdilen) || fallback.kararinaItirazEdilen,
+      konu: cleanText(parsed.konu) || fallback.konu,
+      hukukiNedenler: cleanText(parsed.hukukiNedenler) || fallback.hukukiNedenler,
+      hukukiDeliller: hukukiDeliller.length > 0 ? hukukiDeliller : fallback.hukukiDeliller,
+      aciklamalar: cleanText(parsed.aciklamalar) || fallback.aciklamalar,
+      sonucVeIstem: cleanText(parsed.sonucVeIstem) || fallback.sonucVeIstem,
+    }
+  } catch {
+    return fallback
+  }
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -145,11 +194,12 @@ app.post('/api/dilekce', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model,
       temperature: 0.3,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
           content:
-            'Sen resmi dilekçe yazımında uzman bir hukuk asistanısın. Türkçe yazarsın ve yalnızca istenen dilekçe metnini üretirsin.',
+            'Sen resmi dilekçe yazımında uzman bir hukuk asistanısın. Sadece geçerli JSON üretirsin.',
         },
         { role: 'user', content: input },
       ],
@@ -161,7 +211,8 @@ app.post('/api/dilekce', async (req, res) => {
       return
     }
 
-    res.json({ output: text })
+    const generated = parseModelOutput(text)
+    res.json({ output: text, generated })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'OpenAI request failed' })

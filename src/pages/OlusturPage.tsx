@@ -136,11 +136,11 @@ export default function OlusturPage() {
       })
 
       const data = (await response.json()) as DilekceResponse
-      if (!response.ok || !data.output) {
+      if (!response.ok || !data.output || !data.generated) {
         throw new Error(data.error || 'Dilekçe oluşturulamadı')
       }
 
-      navigate('/dilekce', { state: { content: data.output } })
+      navigate('/dilekce', { state: { content: data.output, form: payload, generated: data.generated } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu')
     } finally {
