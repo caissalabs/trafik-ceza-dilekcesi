@@ -3,12 +3,15 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { DilekceFormPayload, DilekceResponse } from './dilekceTypes'
 import './OlusturPage.css'
 
-const LOADING_MESSAGES = [
-  'Dilekçe taslağı hazırlanıyor',
-  'Hukuki gerekçeler düzenleniyor',
-  'Metin formatı kontrol ediliyor',
-  'Son dokunuşlar yapılıyor',
-]
+const LOADING_STEPS = [
+  'Bilgileriniz doğrulanıyor',
+  'Yetkili Sulh Ceza Hâkimliği belirleniyor',
+  'Karayolları Trafik Kanunu maddeleri inceleniyor',
+  'Emsal yargı kararları taranıyor',
+  'Dilekçe metni hazırlanıyor',
+] as const
+
+const STEP_INTERVAL_MS = 2200
 
 const INITIAL: DilekceFormPayload = {
   birim: '',
@@ -38,7 +41,8 @@ export default function OlusturPage() {
   const [form, setForm] = useState<DilekceFormPayload>(INITIAL)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadingTick, setLoadingTick] = useState(0)
+  const [activeStep, setActiveStep] = useState(0)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const navigate = useNavigate()
 
   const apiBase = useMemo(() => {
@@ -48,15 +52,23 @@ export default function OlusturPage() {
 
   useEffect(() => {
     if (!loading) {
-      setLoadingTick(0)
+      setActiveStep(0)
+      setElapsedSeconds(0)
       return
     }
 
-    const interval = window.setInterval(() => {
-      setLoadingTick((value) => value + 1)
-    }, 900)
+    const start = Date.now()
+    const timer = window.setInterval(() => {
+      const elapsedMs = Date.now() - start
+      setElapsedSeconds(Math.floor(elapsedMs / 1000))
+      const next = Math.min(
+        LOADING_STEPS.length - 1,
+        Math.floor(elapsedMs / STEP_INTERVAL_MS),
+      )
+      setActiveStep(next)
+    }, 250)
 
-    return () => window.clearInterval(interval)
+    return () => window.clearInterval(timer)
   }, [loading])
 
   const fillTestData = () => {
@@ -136,10 +148,6 @@ export default function OlusturPage() {
     }
   }
 
-  const loadingStep = LOADING_MESSAGES[loadingTick % LOADING_MESSAGES.length]
-  const elapsedSeconds = Math.floor((loadingTick * 900) / 1000)
-  const progress = Math.min(96, 16 + loadingTick * 7)
-
   return (
     <div className="op-root">
       <nav className="op-nav">
@@ -156,15 +164,81 @@ export default function OlusturPage() {
 
       <main className="op-main">
         {loading ? (
-          <section className="op-loading-screen" aria-live="polite" aria-busy="true">
-            <div className="op-loading-card">
-              <span className="op-loading-spinner" aria-hidden />
-              <h2>Dilekçen hazırlanıyor</h2>
-              <p className="op-loading-card__step">{loadingStep}</p>
-              <div className="op-loading-progress" aria-hidden>
-                <div className="op-loading-progress__bar" style={{ width: `${progress}%` }} />
+          <section className="op-loading" aria-live="polite" aria-busy="true">
+            <div className="op-loading__card">
+              <div className="op-loading__brand" aria-hidden>
+                <span className="op-loading__brand-pulse" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M6 4h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M14 4v5h5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M9 13h6M9 16h4"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </div>
-              <p className="op-loading-card__timer">{elapsedSeconds} sn</p>
+
+              <h2 className="op-loading__title">Dilekçeniz hazırlanıyor</h2>
+              <p className="op-loading__subtitle">
+                Yapay zeka kısa süre içinde itiraz dilekçenizi tamamlayacak.
+              </p>
+
+              <ul className="op-loading__steps" role="list">
+                {LOADING_STEPS.map((label, index) => {
+                  const status =
+                    index < activeStep
+                      ? 'done'
+                      : index === activeStep
+                        ? 'active'
+                        : 'pending'
+                  return (
+                    <li
+                      key={label}
+                      className={`op-loading__step op-loading__step--${status}`}
+                    >
+                      <span className="op-loading__step-icon" aria-hidden>
+                        {status === 'done' ? (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path
+                              d="M3 7.2 5.6 9.8 11 4.4"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : status === 'active' ? (
+                          <span className="op-loading__step-spinner" />
+                        ) : (
+                          <span className="op-loading__step-dot" />
+                        )}
+                      </span>
+                      <span className="op-loading__step-label">{label}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <div className="op-loading__footer">
+                <span className="op-loading__elapsed">
+                  Geçen süre: {elapsedSeconds} sn
+                </span>
+                <span className="op-loading__hint">
+                  Sayfayı kapatmayın
+                </span>
+              </div>
             </div>
           </section>
         ) : null}
