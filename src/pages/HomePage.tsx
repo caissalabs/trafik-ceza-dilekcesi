@@ -1,135 +1,127 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { Link } from 'react-router-dom'
 import './HomePage.css'
 
 type ChatResponse = { output?: string }
 
-const FEATURES = [
-  {
-    icon: '⚡',
-    title: 'Dakikalar İçinde Hazır',
-    desc: 'Ceza bilgilerini girmen yeterli. Sistem otomatik olarak dilekçeni oluşturur.',
-  },
-  {
-    icon: '⚖️',
-    title: 'Hukuki Açıdan Sağlam',
-    desc: 'Karayolları Trafik Kanunu ve Tebligat Kanununa uygun dil ile hazırlanır.',
-  },
-  {
-    icon: '🤖',
-    title: 'Yapay Zeka Destekli',
-    desc: 'GPT tabanlı dil modeli her dilekçeyi senin durumuna özel olarak yazar.',
-  },
-  {
-    icon: '🔒',
-    title: 'Güvenli & Gizli',
-    desc: 'Bilgilerin şifreli bağlantıyla iletilir ve sunucuda saklanmaz.',
-  },
-  {
-    icon: '🇹🇷',
-    title: 'Türkçe Arayüz',
-    desc: 'Tüm adımlar sade Türkçe ile anlatılmıştır; hukuki terim bilgisi gerekmez.',
-  },
-  {
-    icon: '📄',
-    title: 'Hazır İndir',
-    desc: 'Dilekçeyi PDF veya düz metin olarak indir, ilgili kuruma anında gönder.',
-  },
-]
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/** Tek sayfa: `/` veya `/home` (ileride router ile uyumlu). */
+function isHomePath(): boolean {
+  const p = window.location.pathname.replace(/\/+$/, '') || '/'
+  return p === '/' || p === '/home'
+}
+
+function smoothScrollToElementId(id: string): void {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.scrollIntoView({
+    behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+    block: 'start',
+  })
+  window.history.replaceState(null, '', `#${id}`)
+}
+
+function onHomePageHashLink(e: MouseEvent<HTMLAnchorElement>, id: string): void {
+  if (!isHomePath()) return
+  e.preventDefault()
+  smoothScrollToElementId(id)
+}
 
 const STEPS = [
   {
     n: '01',
-    title: 'Ceza Bilgilerini Gir',
-    desc: 'Ceza tutanağındaki tarih, madde ve açıklama bilgilerini forma ekle.',
+    title: 'Ceza Tutanağını Gir',
+    desc: 'Tutanaktaki bilgileri forma gir. Tarih, madde, açıklama - hepsi bu.',
   },
   {
     n: '02',
-    title: 'AI Dilekçeyi Oluşturur',
-    desc: 'Yapay zeka bilgileri analiz eder ve hukuki olarak geçerli bir itiraz metnini saniyeler içinde yazar.',
+    title: 'Dilekçeni Oluştur',
+    desc:
+      'Sistemimiz bilgileri analiz eder ve itiraz dilekçeni anında yazar. Yetkili sulh ceza hakimliği otomatik belirlenir. Özel olarak eğitilmiş yapay zeka, olayına en uygun kanun maddelerini ve yargı kararlarını bulup dilekçeni zenginleştirir.',
   },
   {
     n: '03',
-    title: 'İndir & Gönder',
-    desc: 'Hazırlanan dilekçeyi indir, imzala ve yetkili birime ilet.',
+    title: 'İndir ve İlet',
+    desc: 'Dilekçeni indir, imzala, ilgili birime teslim et.',
   },
 ]
 
-const TESTIMONIALS = [
-  {
-    name: 'Ahmet Y.',
-    role: 'Serbest Çalışan',
-    text: 'Park cezasına itiraz etmek için avukata gitmeyi düşünüyordum. Bu sistemle 3 dakikada dilekçemi hazırladım, itirazım kabul edildi.',
-  },
-  {
-    name: 'Selin K.',
-    role: 'Öğretmen',
-    text: 'Hız cezasına aldığımda nereye başvuracağımı bile bilmiyordum. Adım adım yönlendirmesi çok işe yaradı.',
-  },
-  {
-    name: 'Murat D.',
-    role: 'Küçük İşletme Sahibi',
-    desc: 'Araç sahibi olmadan kesilen ceza için hazırladığı itiraz metni hukuki açıdan son derece sağlamdı.',
-    text: 'Araç sahibi olmadan kesilen ceza için hazırladığı itiraz metni son derece sağlamdı. Kesinlikle tavsiye ederim.',
-  },
-]
-
-const PLANS = [
-  {
-    name: 'Ücretsiz',
-    price: '₺0',
-    period: 'her zaman',
-    highlight: false,
-    features: ['3 dilekçe/ay', 'Temel şablonlar', 'PDF indirme', 'E-posta desteği'],
-  },
-  {
-    name: 'Standart',
-    price: '₺49',
-    period: '/ ay',
-    highlight: true,
-    features: ['Sınırsız dilekçe', 'AI destekli metin', 'PDF + Word indirme', 'Öncelikli destek', 'Geçmiş dilekçeler'],
-  },
-  {
-    name: 'Pro',
-    price: '₺129',
-    period: '/ ay',
-    highlight: false,
-    features: ['Standart\'ın tüm özellikleri', 'Toplu dilekçe (ekip)', 'API erişimi', 'Özel şablon yönetimi', 'SLA garantisi'],
-  },
+const PRICING_BULLETS = [
+  '1 dakikada hazır',
+  'PDF olarak indir',
+  'Abonelik yok',
 ]
 
 const FAQS = [
   {
-    q: 'Dilekçe gerçekten hukuki geçerliliği var mı?',
-    a: 'Sistem, yürürlükteki Karayolları Trafik Kanunu ve ilgili yönetmeliklere dayanarak metin üretir. Ancak hukuki kesinlik için bir avukata danışmanızı öneririz.',
+    q: 'Bilgilerim saklanıyor mu?',
+    a:
+      'Sisteme girdiğiniz hiçbir bilgi tarafımızca görüntülenemez. Tüm veriler uçtan uca şifrelenir; girdiğiniz bilgilere yalnızca siz erişebilirsiniz. Üçüncü taraflarla herhangi bir veri paylaşımı yapılmaz.',
   },
   {
-    q: 'Bilgilerim saklanıyor mu?',
-    a: 'Hayır. Gönderdiğiniz veriler yalnızca dilekçe üretimi için anlık olarak işlenir ve sunucularımızda kalıcı olarak tutulmaz.',
+    q: 'İtiraz süresi ne kadar?',
+    a:
+      "Trafik cezasına tebliğden itibaren 15 gün içinde ilgili Sulh Ceza Hakimliği'ne itiraz edebilirsiniz. Bu süreyi kaçırmamak son derece önemlidir. Sistemimiz dilekçenizi saniyeler içinde hazırlar.",
   },
   {
     q: 'Hangi ceza türlerine itiraz yapabilirim?',
-    a: 'Hız ihlali, park yasağı, kırmızı ışık ve diğer trafik cezaları desteklenmektedir.',
+    a:
+      'Karayolları Trafik Kanunu kapsamında düzenlenen idari para cezalarına itiraz edebilirsiniz. Hız ihlali, park cezası, sinyal ihlali, alkollü araç kullanma ve şerit ihlali gibi yaygın ceza türleri desteklenmektedir.',
   },
   {
-    q: 'Aboneliği istediğimde iptal edebilir miyim?',
-    a: 'Evet, aboneliğinizi istediğiniz zaman bir tık ile iptal edebilirsiniz; ek ücret alınmaz.',
+    q: "Türkiye'de en çok hangi trafik cezaları kesiliyor?",
+    a:
+      "Emniyet Genel Müdürlüğü verilerine göre Türkiye'de yılda 25 milyonun üzerinde trafik cezası düzenlenmektedir. En sık kesilen cezalar sırasıyla hız ihlali, hatalı park, sinyal ihlali, şerit ihlali ve belgesiz araç kullanımıdır. Sürücülerin büyük çoğunluğu bu cezalara itiraz etme hakkından habersiz olduğu için cezaları doğrudan ödemektedir.",
   },
   {
-    q: 'Ücretsiz planda kredi kartı gerekiyor mu?',
-    a: 'Hayır. Ücretsiz plan için herhangi bir ödeme bilgisi girmeniz gerekmez.',
+    q: 'İtiraz etmek mantıklı mı?',
+    a:
+      "İtiraz hakkı, Karayolları Trafik Kanunu'nun size tanıdığı yasal bir haktır. Her itirazın kabul edileceği garanti edilemez; ancak usule uygun, gerekçeli ve zamanında yapılan itirazlar değerlendirmeye alınır. Özellikle tutanakta eksik bilgi, yanlış tespit veya usul hatası bulunduğunu düşünüyorsanız itiraz etmek hakkınızdır.",
+  },
+  {
+    q: "Davalı tarafı ve Sulh Ceza Hakimliği'ni nasıl belirliyorsunuz?",
+    a:
+      "Sistemimiz, cezayı düzenleyen birimin bilgisini analiz ederek davalı tarafı otomatik olarak belirler. Yetkili Sulh Ceza Hakimliği ise Türkiye genelindeki adli yargı yapılanmasına ilişkin güncel veriler doğrultusunda sistemimiz tarafından tespit edilir. Dilekçeniz oluşturulmadan önce bu bilgiler size gösterilir ve onayınız alınır. Onay sonrası sorumluluk kullanıcıya aittir.",
+  },
+  {
+    q: 'Ödeme ne zaman alınır?',
+    a:
+      'Dilekçenizi indirmeden önce tek seferlik ödeme yapmanız gerekir. Abonelik sistemi yoktur, her dilekçe için ayrı ödeme alınır.',
+  },
+  {
+    q: 'Hangi formatta indirebilirim?',
+    a:
+      "Dilekçeniz PDF formatında hazırlanır. Çıktı alıp imzaladıktan sonra ilgili Sulh Ceza Hakimliği'ne şahsen teslim edebilir ya da posta yoluyla gönderebilirsiniz.",
+  },
+  {
+    q: 'İtirazım kabul edilmezse ne olur?',
+    a:
+      "İtirazın sonucu tamamen mahkemenin takdirindedir. Ödenen ücret, itirazın sonucundan bağımsız olarak iade edilmez. Sonuç konusunda herhangi bir taahhütte bulunulmamaktadır. Davanızın karmaşık olduğunu düşünüyorsanız bir avukattan destek almanızı öneririz.",
   },
 ]
 
 export default function HomePage() {
+  const [gptModalOpen, setGptModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [output, setOutput] = useState<string>('')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [showScrollTop, setShowScrollTop] = useState(false)
 
   const apiBase = useMemo(() => {
     const raw = import.meta.env.VITE_API_BASE_URL as string | undefined
     return raw && raw.trim().length > 0 ? raw.trim().replace(/\/+$/, '') : ''
   }, [])
+
+  const closeGptModal = () => {
+    setGptModalOpen(false)
+    setError(null)
+    setOutput('')
+    setLoading(false)
+  }
 
   const onDemo = async () => {
     setLoading(true)
@@ -154,74 +146,147 @@ export default function HomePage() {
     }
   }
 
+  useEffect(() => {
+    if (!gptModalOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setGptModalOpen(false)
+        setError(null)
+        setOutput('')
+        setLoading(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [gptModalOpen])
+
+  useEffect(() => {
+    const threshold = 360
+    const onScroll = () => {
+      setShowScrollTop(window.scrollY > threshold)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const scrollPageToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+    })
+    const { pathname, search } = window.location
+    window.history.replaceState(null, '', `${pathname}${search}`)
+  }
+
   return (
     <>
+      <div className="lp-first-screen">
       {/* ───────── NAVBAR ───────── */}
       <nav className="lp-nav">
         <span className="lp-nav__logo">trafik<span className="lp-nav__dot">.</span>ceza</span>
         <ul className="lp-nav__links" role="list">
-          <li><a href="#features">Özellikler</a></li>
-          <li><a href="#how">Nasıl Çalışır</a></li>
-          <li><a href="#pricing">Fiyatlar</a></li>
-          <li><a href="#faq">SSS</a></li>
+          <li>
+            <a href="#how" onClick={(e) => onHomePageHashLink(e, 'how')}>
+              Nasıl Çalışır
+            </a>
+          </li>
+          <li>
+            <a href="#pricing" onClick={(e) => onHomePageHashLink(e, 'pricing')}>
+              Fiyatlar
+            </a>
+          </li>
+          <li>
+            <a href="#faq" onClick={(e) => onHomePageHashLink(e, 'faq')}>
+              Sık Sorulan Sorular
+            </a>
+          </li>
         </ul>
-        <a href="#pricing" className="lp-nav__cta">Başla</a>
+        <div className="lp-nav__actions">
+          <button
+            type="button"
+            className="lp-nav__gpt"
+            onClick={() => setGptModalOpen(true)}
+          >
+            GPT test et
+          </button>
+          <Link to="/olustur" className="lp-nav__cta">
+            Dilekçeni Oluştur
+          </Link>
+        </div>
       </nav>
 
       {/* ───────── HERO ───────── */}
       <section className="lp-hero" id="hero">
-        <div className="lp-hero__glow" aria-hidden />
+        <div className="lp-hero__bg" aria-hidden>
+          <div className="lp-hero__glow lp-hero__glow--1" />
+          <div className="lp-hero__glow lp-hero__glow--2" />
+          <div className="lp-hero__grid" />
+        </div>
         <div className="lp-hero__inner">
-          <p className="lp-eyebrow">Yapay Zeka Destekli</p>
           <h1 className="lp-hero__title">
-            Trafik Cezana İtiraz Dilekçeni{' '}
-            <span className="lp-hero__accent">Dakikalar İçinde</span> Hazırla
+            Trafik Cezana İtiraz<br />
+            Dilekçeni{' '}
+            <span className="lp-hero__accent">Anında</span> Hazırla
           </h1>
           <p className="lp-hero__sub">
-            Avukata gerek yok. Ceza bilgilerini gir, yapay zeka hukuki olarak
-            sağlam dilekçeni anında oluştursun.
+          Ceza bilgilerini gir - yapay zeka senin için en iyi itiraz dilekçesini hazırlasın.
           </p>
           <div className="lp-hero__ctas">
-            <a href="#pricing" className="lp-btn lp-btn--primary">Ücretsiz Dene</a>
-            <a href="#how" className="lp-btn lp-btn--ghost">Nasıl Çalışır?</a>
-          </div>
-
-          {/* GPT Demo kutusu */}
-          <div className="lp-demo">
-            <p className="lp-demo__label">Canlı Demo — GPT bağlantısını test et</p>
-            <button
-              type="button"
-              className="lp-btn lp-btn--accent"
-              onClick={onDemo}
-              disabled={loading}
+            <Link to="/olustur" className="lp-btn lp-btn--primary lp-btn--hero">
+              Dilekçeni Oluştur
+              <svg className="lp-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </Link>
+            <a
+              href="#how"
+              className="lp-btn lp-btn--ghost"
+              onClick={(e) => onHomePageHashLink(e, 'how')}
             >
-              {loading ? 'Yanıt bekleniyor…' : 'GPT\'ye gönder'}
-            </button>
-            {error && <p className="lp-demo__error">Hata: {error}</p>}
-            {output && <pre className="lp-demo__output">{output}</pre>}
+              Nasıl Çalışır?
+            </a>
+          </div>
+          <div className="lp-hero__trust">
+            <span className="lp-hero__trust-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <path d="M7 1l1.5 3.2L12 4.7l-2.5 2.5.6 3.5L7 9.2l-3.1 1.5.6-3.5L2 4.7l3.5-.5L7 1z" fill="var(--accent)" stroke="var(--accent)" strokeWidth="0.5"/>
+              </svg>
+              PDF olarak indir
+            </span>
+            <span className="lp-hero__trust-sep" aria-hidden>·</span>
+            <span className="lp-hero__trust-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <path d="M7 1l1.5 3.2L12 4.7l-2.5 2.5.6 3.5L7 9.2l-3.1 1.5.6-3.5L2 4.7l3.5-.5L7 1z" fill="var(--accent)" stroke="var(--accent)" strokeWidth="0.5"/>
+              </svg>
+              Abonelik yok
+            </span>
+            <span className="lp-hero__trust-sep" aria-hidden>·</span>
+            <span className="lp-hero__trust-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <path d="M7 1l1.5 3.2L12 4.7l-2.5 2.5.6 3.5L7 9.2l-3.1 1.5.6-3.5L2 4.7l3.5-.5L7 1z" fill="var(--accent)" stroke="var(--accent)" strokeWidth="0.5"/>
+              </svg>
+              Veriler saklanmaz
+            </span>
           </div>
         </div>
+        <a
+          href="#how"
+          className="lp-hero__scroll"
+          aria-label="Aşağı kaydır"
+          onClick={(e) => onHomePageHashLink(e, 'how')}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+            <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </a>
       </section>
-
-      {/* ───────── FEATURES ───────── */}
-      <section className="lp-section" id="features">
-        <div className="lp-container">
-          <p className="lp-eyebrow lp-center">Neden Biz?</p>
-          <h2 className="lp-section__title lp-center">Her Şey Düşünüldü</h2>
-          <p className="lp-section__sub lp-center">
-            İtiraz sürecinin her adımını kolaylaştırmak için tasarlandı.
-          </p>
-          <div className="lp-feat-grid">
-            {FEATURES.map((f) => (
-              <article key={f.title} className="lp-feat-card">
-                <span className="lp-feat-card__icon" aria-hidden>{f.icon}</span>
-                <h3 className="lp-feat-card__title">{f.title}</h3>
-                <p className="lp-feat-card__desc">{f.desc}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
+      </div>
 
       {/* ───────── HOW IT WORKS ───────── */}
       <section className="lp-section lp-section--alt" id="how">
@@ -240,56 +305,39 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ───────── TESTIMONIALS ───────── */}
-      <section className="lp-section" id="testimonials">
-        <div className="lp-container">
-          <p className="lp-eyebrow lp-center">Kullanıcılar Ne Diyor?</p>
-          <h2 className="lp-section__title lp-center">Gerçek Sonuçlar</h2>
-          <div className="lp-testi-grid">
-            {TESTIMONIALS.map((t) => (
-              <blockquote key={t.name} className="lp-testi">
-                <p className="lp-testi__text">"{t.text}"</p>
-                <footer className="lp-testi__footer">
-                  <span className="lp-testi__name">{t.name}</span>
-                  <span className="lp-testi__role">{t.role}</span>
-                </footer>
-              </blockquote>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ───────── PRICING ───────── */}
       <section className="lp-section lp-section--alt" id="pricing">
         <div className="lp-container">
-          <p className="lp-eyebrow lp-center">Fiyatlandırma</p>
-          <h2 className="lp-section__title lp-center">Sade & Şeffaf</h2>
-          <p className="lp-section__sub lp-center">
-            Gizli ücret yok. İstediğinde iptal et.
-          </p>
-          <div className="lp-plan-grid">
-            {PLANS.map((p) => (
-              <article key={p.name} className={`lp-plan${p.highlight ? ' lp-plan--highlight' : ''}`}>
-                {p.highlight && <span className="lp-plan__badge">Popüler</span>}
-                <h3 className="lp-plan__name">{p.name}</h3>
-                <p className="lp-plan__price">
-                  {p.price}<span className="lp-plan__period">{p.period}</span>
-                </p>
-                <ul className="lp-plan__features" role="list">
-                  {p.features.map((f) => (
-                    <li key={f}>
-                      <span aria-hidden>✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <a
-                  href="#hero"
-                  className={`lp-btn lp-btn--full${p.highlight ? ' lp-btn--primary' : ' lp-btn--ghost'}`}
-                >
-                  {p.name === 'Ücretsiz' ? 'Ücretsiz Başla' : 'Seç'}
-                </a>
-              </article>
-            ))}
+          <p className="lp-eyebrow lp-center lp-pricing__eyebrow">Fiyatlandırma</p>
+          <div className="lp-plan-single">
+            <article className="lp-plan lp-plan--highlight lp-plan--solo lp-plan--simple">
+              <h2 className="lp-plan__lead">
+                <span className="lp-plan__leadStrong">Tek fiyat.</span>
+                <span className="lp-plan__leadMuted">Hepsi bu.</span>
+              </h2>
+              <p className="lp-plan__price">
+                ₺24<span className="lp-plan__cents">,99</span>
+              </p>
+              <p className="lp-plan__perUnit">her dilekçe için</p>
+              <ul
+                className="lp-plan__features lp-plan__features--simple"
+                role="list"
+              >
+                {PRICING_BULLETS.map((f) => (
+                  <li key={f}>
+                    <span className="lp-plan__tick" aria-hidden>
+                      ✔
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <div className="lp-plan__actions">
+                <Link to="/olustur" className="lp-btn lp-btn--full lp-btn--primary">
+                  Dilekçeni Oluştur
+                </Link>
+              </div>
+            </article>
           </div>
         </div>
       </section>
@@ -331,9 +379,72 @@ export default function HomePage() {
             Bu sistem hukuki danışmanlık hizmeti vermez; resmi başvurularda bir
             hukuk uzmanına danışmanız önerilir.
           </p>
-          <p className="lp-footer__copy">© {new Date().getFullYear()} trafik.ceza — Tüm hakları saklıdır.</p>
+          <p className="lp-footer__copy">© {new Date().getFullYear()} trafik.ceza - Tüm hakları saklıdır.</p>
         </div>
       </footer>
+
+      <button
+        type="button"
+        className={`lp-scroll-top${showScrollTop ? ' lp-scroll-top--visible' : ''}`}
+        onClick={scrollPageToTop}
+        aria-label="Sayfanın başına kaydır"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+          <path
+            d="M10 16V4M6 8l4-4 4 4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {gptModalOpen ? (
+        <div
+          className="lp-modal-root"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeGptModal()
+          }}
+        >
+          <div
+            className="lp-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gpt-modal-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="lp-modal__close"
+              onClick={closeGptModal}
+              aria-label="Kapat"
+            >
+              ×
+            </button>
+            <h2 id="gpt-modal-title" className="lp-modal__title">
+              GPT bağlantı testi
+            </h2>
+            <p className="lp-modal__desc">
+              Aşağıdaki buton GPT’ye “buttona bastım” mesajını gönderir; cevabı
+              burada görürsün.
+            </p>
+            <button
+              type="button"
+              className="lp-btn lp-btn--accent lp-modal__send"
+              onClick={onDemo}
+              disabled={loading}
+            >
+              {loading ? 'Yanıt bekleniyor…' : 'GPT’ye gönder'}
+            </button>
+            {error ? <p className="lp-modal__error">Hata: {error}</p> : null}
+            {output ? (
+              <pre className="lp-modal__output">{output}</pre>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }
