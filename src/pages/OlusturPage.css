@@ -173,6 +173,34 @@
   font-size: 0.92rem;
 }
 
+.op-loading-card__step {
+  margin-top: 0.35rem !important;
+  min-height: 1.4em;
+}
+
+.op-loading-card__timer {
+  margin-top: 0.6rem !important;
+  font-size: 0.82rem !important;
+  opacity: 0.8;
+}
+
+.op-loading-progress {
+  width: 100%;
+  margin-top: 0.8rem;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  overflow: hidden;
+}
+
+.op-loading-progress__bar {
+  height: 100%;
+  width: 15%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8f40f7, #bf69ff);
+  transition: width 0.8s ease;
+}
+
 .op-loading-spinner {
   display: inline-block;
   width: 38px;
@@ -197,67 +225,6 @@
   border-radius: 10px;
   padding: 0.75rem 0.9rem;
   font-size: 0.9rem;
-}
-
-.op-result {
-  margin-bottom: 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 1rem;
-  background: color-mix(in srgb, var(--bg) 94%, var(--accent-bg) 6%);
-}
-
-.op-result__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-  margin-bottom: 0.8rem;
-}
-
-.op-result__header h2 {
-  margin: 0;
-  color: var(--text-h);
-  font-size: 1rem;
-}
-
-.op-result__download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 9px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 0.87rem;
-  font-weight: 600;
-}
-
-.op-result__viewer {
-  width: 100%;
-  min-height: 74dvh;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-}
-
-.op-result__text {
-  margin-top: 0.8rem;
-  font-size: 0.86rem;
-  color: var(--text);
-}
-
-.op-result__text pre {
-  margin-top: 0.5rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.7rem;
-  background: var(--code-bg);
-  color: var(--text-h);
 }
 
 /* ── Fieldset ── */
@@ -562,15 +529,6 @@
 }
 
 @media (max-width: 480px) {
-  .op-result__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .op-result__viewer {
-    min-height: 64dvh;
-  }
-
   .op-submit-row {
     justify-content: stretch;
   }
