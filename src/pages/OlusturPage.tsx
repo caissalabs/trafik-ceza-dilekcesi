@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type {
   DilekceFormPayload,
@@ -7,11 +7,9 @@ import type {
 } from './dilekceTypes'
 import {
   buildLayout,
-  DilekcePdfStage,
-  generatePdfFromStage,
+  generatePdfFromLayout,
 } from './dilekcePdf'
 import './OlusturPage.css'
-import './DilekcePage.css'
 
 const LOADING_STEPS = [
   'Bilgileriniz doğrulanıyor',
@@ -35,6 +33,9 @@ const INITIAL: DilekceFormPayload = {
   cezaTutari: '',
   not: '',
   ihlalYeri: '',
+  ihlalAdresi: '',
+  ihlalIl: '',
+  ihlalIlce: '',
   ihlalEdenAd: '',
   ihlalEdenTc: '',
   olayAkisi: '',
@@ -56,9 +57,6 @@ export default function OlusturPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [readyForRoute, setReadyForRoute] = useState<Omit<DilekceRouteState, 'pdfUrl'> | null>(null)
   const navigate = useNavigate()
-  const sourceRef = useRef<HTMLDivElement>(null)
-  const eklerBlockRef = useRef<HTMLDivElement>(null)
-  const pdfEklerSpacerRef = useRef<HTMLDivElement>(null)
 
   const apiBase = useMemo(() => {
     const raw = import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -98,17 +96,8 @@ export default function OlusturPage() {
     const generateAndNavigate = async () => {
       setError(null)
       try {
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => resolve())
-        })
-        const target = sourceRef.current
-        if (!target) throw new Error('PDF render kaynağı bulunamadı')
-
-        const blobUrl = await generatePdfFromStage({
-          target,
-          eklerEl: eklerBlockRef.current,
-          spacer: pdfEklerSpacerRef.current,
-        })
+        const pdfBlob = await generatePdfFromLayout(pendingLayout)
+        const blobUrl = URL.createObjectURL(pdfBlob)
 
         if (cancelled) {
           URL.revokeObjectURL(blobUrl)
@@ -150,6 +139,9 @@ export default function OlusturPage() {
       cezaTutari: '1.506',
       not: 'Sürücünün kırmızı ışık ihlali yaptığı tespit edilmiştir.',
       ihlalYeri: 'İzmir Atatürk Caddesi Alsancak',
+      ihlalAdresi: 'Barbaros Mahallesi Begonya Sokak No:12 D:4',
+      ihlalIl: 'İstanbul',
+      ihlalIlce: 'Ataşehir',
       ihlalEdenAd: 'Ahmet Yılmaz',
       ihlalEdenTc: '12345678901',
       olayAkisi:
@@ -392,6 +384,43 @@ export default function OlusturPage() {
             <legend className="op-fieldset__legend">
               <span className="op-fieldset__icon" aria-hidden>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M3.5 7.5 9 3l5.5 4.5V14a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V7.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M7 15v-3.4a2 2 0 0 1 4 0V15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </span>
+              Kuralın İhlal Edildiği Adres
+            </legend>
+
+            <div className="op-field op-field--full">
+              <label className="op-label" htmlFor="ihlalAdresi">
+                Adres
+                <span className="op-label__required" aria-hidden> *</span>
+              </label>
+              <input id="ihlalAdresi" className="op-input" type="text" placeholder="Örn: Barbaros Mahallesi Begonya Sokak No:12 D:4" value={form.ihlalAdresi} onChange={set('ihlalAdresi')} required />
+            </div>
+
+            <div className="op-row">
+              <div className="op-field">
+                <label className="op-label" htmlFor="ihlalIl">
+                  İl
+                  <span className="op-label__required" aria-hidden> *</span>
+                </label>
+                <input id="ihlalIl" className="op-input" type="text" placeholder="Örn: İstanbul" value={form.ihlalIl} onChange={set('ihlalIl')} required />
+              </div>
+              <div className="op-field">
+                <label className="op-label" htmlFor="ihlalIlce">
+                  İlçe
+                  <span className="op-label__required" aria-hidden> *</span>
+                </label>
+                <input id="ihlalIlce" className="op-input" type="text" placeholder="Örn: Ataşehir" value={form.ihlalIlce} onChange={set('ihlalIlce')} required />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="op-fieldset">
+            <legend className="op-fieldset__legend">
+              <span className="op-fieldset__icon" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                   <path d="M3 11.5h12M4.5 11.5l1.5-4h6l1.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx="6" cy="13" r="1.2" stroke="currentColor" strokeWidth="1.4" />
                   <circle cx="12" cy="13" r="1.2" stroke="currentColor" strokeWidth="1.4" />
@@ -536,14 +565,6 @@ export default function OlusturPage() {
           </div>
         </form>
 
-        {loading && pendingLayout ? (
-          <DilekcePdfStage
-            layout={pendingLayout}
-            sourceRef={sourceRef}
-            eklerBlockRef={eklerBlockRef}
-            pdfEklerSpacerRef={pdfEklerSpacerRef}
-          />
-        ) : null}
       </main>
     </div>
   )

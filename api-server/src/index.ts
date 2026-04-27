@@ -1,6 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import OpenAI from 'openai'
+import pg from 'pg'
 
 const app = express()
 
@@ -11,6 +12,14 @@ const openaiApiKey = process.env.OPENAI_API_KEY
 const openai =
   openaiApiKey && openaiApiKey.trim().length > 0
     ? new OpenAI({ apiKey: openaiApiKey })
+    : null
+const databaseUrl = process.env.DATABASE_URL?.trim() || ''
+const dbPool =
+  databaseUrl.length > 0
+    ? new pg.Pool({
+        connectionString: databaseUrl,
+        ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
+      })
     : null
 
 app.get('/health', (_req, res) => {
@@ -32,6 +41,9 @@ type DilekceForm = {
   cezaTutari: string
   not: string
   ihlalYeri: string
+  ihlalAdresi: string
+  ihlalIl: string
+  ihlalIlce: string
   ihlalEdenAd: string
   ihlalEdenTc: string
   olayAkisi: string
@@ -52,6 +64,55 @@ function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function quoteIdentifier(identifier: string): string {
+  const cleaned = identifier.trim()
+  if (!cleaned) return '""'
+  return `"${cleaned.replace(/"/g, '""')}"`
+}
+
+function trUpper(value: string): string {
+  return value.trim().toLocaleUpperCase('tr-TR')
+}
+
+function deriveMahkemeFromAdliye(adliyeRaw: string): string {
+  const cleaned = adliyeRaw.trim().toLocaleUpperCase('tr-TR')
+  if (!cleaned) return ''
+  const base = cleaned
+    .replace(/\s+ADLİYESİ$/u, '')
+    .replace(/\s+ADLIYESI$/u, '')
+    .trim()
+  if (!base) return ''
+  return `${base} SULH CEZA HÂKİMLİĞİ'NE`
+}
+
+async function resolveMahkemeFromDatabase(form: DilekceForm): Promise<string> {
+  if (!dbPool) return ''
+  const il = trUpper(form.ihlalIl)
+  const ilce = trUpper(form.ihlalIlce)
+  if (!il || !ilce) return ''
+
+  const tableName = process.env.DB_KISILER_TABLE?.trim() || 'kisiler'
+  const ilCol = process.env.DB_KISILER_IL_COLUMN?.trim() || 'IL'
+  const ilceCol = process.env.DB_KISILER_ILCE_COLUMN?.trim() || 'ILCE'
+  const adliyeCol = process.env.DB_KISILER_ADLIYE_COLUMN?.trim() || 'ADLIYE'
+
+  const sql = `
+    SELECT TRIM(${quoteIdentifier(adliyeCol)}) AS adliye
+    FROM ${quoteIdentifier(tableName)}
+    WHERE TRIM(${quoteIdentifier(ilCol)}) = $1
+      AND TRIM(${quoteIdentifier(ilceCol)}) = $2
+    LIMIT 1
+  `
+  try {
+    const result = await dbPool.query<{ adliye: string | null }>(sql, [il, ilce])
+    const adliye = cleanText(result.rows[0]?.adliye)
+    return deriveMahkemeFromAdliye(adliye)
+  } catch (err) {
+    console.error('[db] adliye lookup failed', err)
+    return ''
+  }
+}
+
 function normalizeForm(raw: unknown): DilekceForm {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const eklerRaw = Array.isArray(obj.ekler) ? obj.ekler : []
@@ -70,6 +131,9 @@ function normalizeForm(raw: unknown): DilekceForm {
     cezaTutari: cleanText(obj.cezaTutari),
     not: cleanText(obj.not),
     ihlalYeri: cleanText(obj.ihlalYeri),
+    ihlalAdresi: cleanText(obj.ihlalAdresi),
+    ihlalIl: cleanText(obj.ihlalIl),
+    ihlalIlce: cleanText(obj.ihlalIlce),
     ihlalEdenAd: cleanText(obj.ihlalEdenAd),
     ihlalEdenTc: cleanText(obj.ihlalEdenTc),
     olayAkisi: cleanText(obj.olayAkisi),
@@ -114,6 +178,9 @@ KULLANICI VERİLERİ:
 - Toplam Ceza Tutarı: ${form.cezaTutari || '...'}
 - Tutanaktaki Notlar: ${form.not || '...'}
 - İhlalin Yeri: ${form.ihlalYeri || '...'}
+- İhlalin Adresi: ${form.ihlalAdresi || '...'}
+- İl: ${form.ihlalIl || '...'}
+- İlçe: ${form.ihlalIlce || '...'}
 - İhlal Eden Ad Soyad: ${form.ihlalEdenAd || '...'}
 - İhlal Eden T.C. No: ${form.ihlalEdenTc || '...'}
 - Olay Akışı ve Ek Hususlar: ${form.olayAkisi || '...'}
@@ -212,6 +279,10 @@ app.post('/api/dilekce', async (req, res) => {
     }
 
     const generated = parseModelOutput(text)
+    const mahkemeFromDb = await resolveMahkemeFromDatabase(form)
+    if (mahkemeFromDb) {
+      generated.mahkeme = mahkemeFromDb
+    }
     res.json({ output: text, generated })
   } catch (err) {
     console.error(err)

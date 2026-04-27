@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type {
   DilekceRouteState,
 } from './dilekceTypes'
 import {
   buildLayout,
-  DilekcePdfStage,
-  generatePdfFromStage,
+  generatePdfFromLayout,
 } from './dilekcePdf'
 import './DilekcePage.css'
 
@@ -17,9 +16,6 @@ export default function DilekcePage() {
   const form = routeState?.form
   const generated = routeState?.generated
 
-  const sourceRef = useRef<HTMLDivElement>(null)
-  const eklerBlockRef = useRef<HTMLDivElement>(null)
-  const pdfEklerSpacerRef = useRef<HTMLDivElement>(null)
   const initialPdfUrl = routeState?.pdfUrl?.trim() || ''
   const [pdfUrl, setPdfUrl] = useState(initialPdfUrl)
   const [pdfLoading, setPdfLoading] = useState(false)
@@ -44,14 +40,8 @@ export default function DilekcePage() {
       setPdfLoading(true)
       setPdfError(null)
       try {
-        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
-        const target = sourceRef.current
-        if (!target) throw new Error('Render kaynağı bulunamadı')
-        const blobUrl = await generatePdfFromStage({
-          target,
-          eklerEl: eklerBlockRef.current,
-          spacer: pdfEklerSpacerRef.current,
-        })
+        const pdfBlob = await generatePdfFromLayout(layout)
+        const blobUrl = URL.createObjectURL(pdfBlob)
         if (cancelled) {
           URL.revokeObjectURL(blobUrl)
           return
@@ -124,12 +114,6 @@ export default function DilekcePage() {
         </div>
       </main>
 
-      <DilekcePdfStage
-        layout={layout}
-        sourceRef={sourceRef}
-        eklerBlockRef={eklerBlockRef}
-        pdfEklerSpacerRef={pdfEklerSpacerRef}
-      />
     </div>
   )
 }

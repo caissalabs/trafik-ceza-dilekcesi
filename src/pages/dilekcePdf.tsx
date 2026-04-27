@@ -1,24 +1,119 @@
-import type { RefObject } from 'react'
-import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { DilekceFormPayload, GeneratedDilekceSections } from './dilekceTypes'
 
-const A4_WIDTH_PX = 794
-const A4_HEIGHT_PX = 1123
 const TITLE_FALLBACK = "NÖBETÇİ SULH CEZA HÂKİMLİĞİ'NE"
-const PDF_PAGE_BREAK_PAD_MAX_ITERS = 4
+const PAGE_MARGIN_PT = 42.5
+const PAGE_NUMBER_OFFSET_FROM_BOTTOM_PT = 18
+const LABEL_COL_MIN_WIDTH_PT = 110
+const LABEL_COL_MAX_WIDTH_PT = 170
+const LABEL_TO_COLON_GAP_PT = 10
+const COLON_TO_VALUE_GAP_PT = 14
+const PARAGRAPH_INDENT_PT = 28
+const LINE_HEIGHT_PT = 18
+const BODY_FONT_SIZE_PT = 12
+const TITLE_FONT_SIZE_PT = 12
+const BLOCK_GAP_LINES = 1
+const TITLE_SPACER_LINES = 2
+const PDF_FONT_FAMILY = 'DocSerif'
+const PDF_FONT_REGULAR_FILE = 'DocSerif-Regular.ttf'
+const PDF_FONT_BOLD_FILE = 'DocSerif-Bold.ttf'
+const FONT_SOURCES = [
+  // Common Windows filenames from C:\Windows\Fonts
+  {
+    regularUrl: '/fonts/TIMES.TTF',
+    boldUrl: '/fonts/TIMESBD.TTF',
+  },
+  {
+    regularUrl: '/fonts/times.ttf',
+    boldUrl: '/fonts/timesbd.ttf',
+  },
+  // Project-friendly aliases
+  {
+    regularUrl: '/fonts/TimesNewRoman.ttf',
+    boldUrl: '/fonts/TimesNewRoman-Bold.ttf',
+  },
+  {
+    regularUrl: '/fonts/NotoSerif-Regular.ttf',
+    boldUrl: '/fonts/NotoSerif-Bold.ttf',
+  },
+] as const
 
-const LABELS = [
+const INFO_LABELS = [
   'İTİRAZ EDEN',
   'KARARINA İTİRAZ EDİLEN',
   'TUTANAK TARİHİ',
   'TUTANAK NUMARASI',
   'KONU',
+] as const
+
+const LEGAL_LABELS = [
   'HUKUKİ NEDENLER',
   'HUKUKİ DELİLLER',
 ] as const
 
+const LABELS = [...INFO_LABELS, ...LEGAL_LABELS] as const
+
 type Label = (typeof LABELS)[number]
+
+let cachedRegularFontBinary: string | null = null
+let cachedBoldFontBinary: string | null = null
+let cachedFontSourceKey: string | null = null
+
+function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return binary
+}
+
+async function fetchFontAsBinary(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const fontBuffer = await response.arrayBuffer()
+    return arrayBufferToBinaryString(fontBuffer)
+  } catch {
+    return null
+  }
+}
+
+async function ensurePdfFont(pdf: jsPDF): Promise<void> {
+  if (!cachedRegularFontBinary || !cachedBoldFontBinary) {
+    let found = false
+    for (const source of FONT_SOURCES) {
+      const [regular, bold] = await Promise.all([
+        fetchFontAsBinary(source.regularUrl),
+        fetchFontAsBinary(source.boldUrl),
+      ])
+      if (regular && bold) {
+        cachedRegularFontBinary = regular
+        cachedBoldFontBinary = bold
+        cachedFontSourceKey = `${source.regularUrl}|${source.boldUrl}`
+        found = true
+        break
+      }
+    }
+
+    if (!found || !cachedRegularFontBinary || !cachedBoldFontBinary) {
+      throw new Error(
+        'PDF yazı tipi bulunamadı. ' +
+          'Lütfen public/fonts içine TimesNewRoman.ttf ve TimesNewRoman-Bold.ttf ekleyin.',
+      )
+    }
+  }
+
+  if (!cachedFontSourceKey) {
+    throw new Error('PDF yazı tipi kaynak anahtarı oluşturulamadı.')
+  }
+
+  pdf.addFileToVFS(PDF_FONT_REGULAR_FILE, cachedRegularFontBinary)
+  pdf.addFileToVFS(PDF_FONT_BOLD_FILE, cachedBoldFontBinary)
+  pdf.addFont(PDF_FONT_REGULAR_FILE, PDF_FONT_FAMILY, 'normal')
+  pdf.addFont(PDF_FONT_BOLD_FILE, PDF_FONT_FAMILY, 'bold')
+}
 
 export type DilekceLayout = {
   title: string
@@ -39,29 +134,6 @@ function formatDisplayDate(input: string): string {
 
 function clean(value: string | undefined): string {
   return value?.trim() || ''
-}
-
-/** html2canvas + jsPDF dikey kesiminde EKLER bloğu ikiye bölünüyorsa itilecek ekstra px. */
-function measureEklerPageBreakPadPx(
-  paper: HTMLElement,
-  eklerBlock: HTMLElement,
-  pageHeightPt: number,
-  pageWidthPt: number,
-  canvas: HTMLCanvasElement,
-): number {
-  const imgHeightPt = (canvas.height * pageWidthPt) / canvas.width
-  if (imgHeightPt <= pageHeightPt + 0.5) return 0
-
-  const yBreakPx = (pageHeightPt / imgHeightPt) * paper.scrollHeight
-  const paperRect = paper.getBoundingClientRect()
-  const ekRect = eklerBlock.getBoundingClientRect()
-  const ekTopPx = ekRect.top - paperRect.top + paper.scrollTop
-  const ekBottomPx = ekTopPx + ekRect.height
-
-  const crossesBreak = ekTopPx < yBreakPx - 1 && ekBottomPx > yBreakPx + 1
-  if (!crossesBreak) return 0
-
-  return Math.ceil(yBreakPx - ekTopPx) + 12
 }
 
 export function buildLayout(
@@ -88,7 +160,10 @@ export function buildLayout(
       '...',
   }
 
-  const continuationItirazEden = [`T.C. Kimlik No: ${clean(form.ihlalEdenTc) || '...'}`]
+  const continuationItirazEden = [
+    `T.C. Kimlik No: ${clean(form.ihlalEdenTc) || '...'}`,
+    `${clean(form.ihlalAdresi) || '...'}, ${clean(form.ihlalIl) || '...'} / ${clean(form.ihlalIlce) || '...'}`,
+  ]
   const continuationHukukiDeliller = [
     ...(generated.hukukiDeliller ?? []).slice(1),
     ...form.ekler,
@@ -117,149 +192,220 @@ export function buildLayout(
   }
 }
 
-export function renderResultWithBoldDate(text: string) {
-  const pattern = /(\.{2,}\/\.{2,}\/20\.{2}|\d{2}\/\d{2}\/\d{4}|\([^)]*tarih[^)]*\))/gi
-  const chunks = text.split(pattern)
-  const check = /^(\.{2,}\/\.{2,}\/20\.{2}|\d{2}\/\d{2}\/\d{4}|\([^)]*tarih[^)]*\))$/i
-  return chunks.map((chunk, idx) =>
-    check.test(chunk) ? <strong key={idx}>{chunk}</strong> : <span key={idx}>{chunk}</span>,
-  )
+function ensureSpace(
+  pdf: jsPDF,
+  y: number,
+  minHeight: number,
+  topY: number,
+  bottomY: number,
+): number {
+  if (y + minHeight <= bottomY) return y
+  pdf.addPage()
+  return topY
 }
 
-export async function generatePdfFromStage({
-  target,
-  eklerEl,
-  spacer,
-}: {
-  target: HTMLElement
-  eklerEl: HTMLElement | null
-  spacer: HTMLDivElement | null
-}): Promise<string> {
+function splitLines(pdf: jsPDF, text: string, maxWidth: number): string[] {
+  const result = pdf.splitTextToSize(text || '...', maxWidth)
+  if (Array.isArray(result)) return result.map((line) => String(line))
+  return [String(result)]
+}
+
+function drawJustifiedLine(
+  pdf: jsPDF,
+  line: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+): void {
+  const words = line.trim().split(/\s+/).filter(Boolean)
+  if (words.length < 2) {
+    pdf.text(line, x, y)
+    return
+  }
+
+  const wordsWidth = words.reduce((sum, word) => sum + pdf.getTextWidth(word), 0)
+  const freeSpace = maxWidth - wordsWidth
+  const gaps = words.length - 1
+  if (freeSpace <= 0) {
+    pdf.text(line, x, y)
+    return
+  }
+
+  const gapWidth = freeSpace / gaps
+  if (gapWidth > pdf.getTextWidth(' ') * 2.7) {
+    pdf.text(line, x, y)
+    return
+  }
+
+  let cursorX = x
+  words.forEach((word, index) => {
+    pdf.text(word, cursorX, y)
+    cursorX += pdf.getTextWidth(word)
+    if (index < gaps) cursorX += gapWidth
+  })
+}
+
+function drawWrappedJustified(
+  pdf: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  firstLineIndent: number = 0,
+): number {
+  const paragraphs = (text || '...')
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const safeParagraphs = paragraphs.length > 0 ? paragraphs : ['...']
+
+  safeParagraphs.forEach((paragraph, paragraphIndex) => {
+    const firstLineWidth = Math.max(24, maxWidth - firstLineIndent)
+    const firstLine = splitLines(pdf, paragraph, firstLineWidth)[0] ?? ''
+    const restText = paragraph.slice(firstLine.length).trim()
+    const restLines = restText ? splitLines(pdf, restText, maxWidth) : []
+    const lines = [firstLine, ...restLines].filter(Boolean)
+    lines.forEach((line, lineIndex) => {
+      const isLastLine = lineIndex === lines.length - 1
+      const lineX = lineIndex === 0 ? x + firstLineIndent : x
+      const lineWidth = lineIndex === 0 ? firstLineWidth : maxWidth
+      if (isLastLine) {
+        pdf.text(line, lineX, y)
+      } else {
+        drawJustifiedLine(pdf, line, lineX, y, lineWidth)
+      }
+      y += lineHeight
+    })
+    if (paragraphIndex < safeParagraphs.length - 1) {
+      y += lineHeight
+    }
+  })
+
+  return y
+}
+
+export async function generatePdfFromLayout(layout: DilekceLayout): Promise<Blob> {
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+  await ensurePdfFont(pdf)
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
+  const topY = PAGE_MARGIN_PT
+  const bottomY = pageHeight - PAGE_MARGIN_PT
+  const leftX = PAGE_MARGIN_PT
+  const rightX = pageWidth - PAGE_MARGIN_PT
 
-  let padPx = 0
-  let canvas: HTMLCanvasElement | null = null
+  pdf.setFont(PDF_FONT_FAMILY, 'bold')
+  pdf.setFontSize(BODY_FONT_SIZE_PT)
+  const longestLabelWidth = Math.max(...LABELS.map((label) => pdf.getTextWidth(label)))
+  const labelColWidth = Math.min(
+    LABEL_COL_MAX_WIDTH_PT,
+    Math.max(LABEL_COL_MIN_WIDTH_PT, longestLabelWidth + 2),
+  )
+  const colonX = leftX + labelColWidth + LABEL_TO_COLON_GAP_PT
+  const valueX = colonX + COLON_TO_VALUE_GAP_PT
+  const valueWidth = rightX - valueX
 
-  for (let i = 0; i < PDF_PAGE_BREAK_PAD_MAX_ITERS; i += 1) {
-    if (spacer) spacer.style.height = `${padPx}px`
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => resolve())
+  let y = topY
+  pdf.setTextColor(0, 0, 0)
+  pdf.setFont(PDF_FONT_FAMILY, 'bold')
+  pdf.setFontSize(TITLE_FONT_SIZE_PT)
+  pdf.text(layout.title, pageWidth / 2, y, { align: 'center' })
+  y += LINE_HEIGHT_PT * (TITLE_SPACER_LINES + 1)
+
+  const renderLabelBlock = (label: Label) => {
+    pdf.setFont(PDF_FONT_FAMILY, 'normal')
+    pdf.setFontSize(BODY_FONT_SIZE_PT)
+    const valueLines = splitLines(pdf, layout.values[label], valueWidth)
+    const continuationLines = layout.continuations[label].flatMap((line) =>
+      splitLines(pdf, line, valueWidth),
+    )
+    const totalLines = valueLines.length + continuationLines.length
+    const blockHeight = totalLines * LINE_HEIGHT_PT + BLOCK_GAP_LINES * LINE_HEIGHT_PT
+    y = ensureSpace(pdf, y, blockHeight, topY, bottomY)
+
+    pdf.setFont(PDF_FONT_FAMILY, 'bold')
+    pdf.text(label, leftX, y)
+    pdf.text(':', colonX, y, { align: 'center' })
+
+    pdf.setFont(PDF_FONT_FAMILY, 'normal')
+    pdf.setFontSize(BODY_FONT_SIZE_PT)
+    valueLines.forEach((line) => {
+      drawJustifiedLine(pdf, line, valueX, y, valueWidth)
+      y += LINE_HEIGHT_PT
     })
 
-    canvas = await html2canvas(target, {
-      scale: 3,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      logging: false,
-      windowWidth: A4_WIDTH_PX,
-      windowHeight: A4_HEIGHT_PX,
+    continuationLines.forEach((line) => {
+      y = ensureSpace(pdf, y, LINE_HEIGHT_PT, topY, bottomY)
+      drawJustifiedLine(pdf, line, valueX, y, valueWidth)
+      y += LINE_HEIGHT_PT
     })
 
-    if (!eklerEl) break
-    const add = measureEklerPageBreakPadPx(target, eklerEl, pageHeight, pageWidth, canvas)
-    if (add <= 0) break
-    padPx += add
+    y += BLOCK_GAP_LINES * LINE_HEIGHT_PT
   }
 
-  if (!canvas) throw new Error('PDF görüntüsü oluşturulamadı')
+  INFO_LABELS.forEach((label) => renderLabelBlock(label))
 
-  const imgData = canvas.toDataURL('image/png')
-  const imgWidth = pageWidth
-  const imgHeight = (canvas.height * imgWidth) / canvas.width
+  const renderSection = (title: string, body: string) => {
+    const sectionTextWidth = rightX - leftX - PARAGRAPH_INDENT_PT
+    const sectionLines = splitLines(pdf, body, sectionTextWidth)
+    const minHeight =
+      LINE_HEIGHT_PT * (sectionLines.length + 2 + BLOCK_GAP_LINES)
+    y = ensureSpace(pdf, y, minHeight, topY, bottomY)
 
-  let heightLeft = imgHeight
-  let position = 0
+    pdf.setFont(PDF_FONT_FAMILY, 'bold')
+    pdf.text(title, leftX, y)
+    pdf.text(':', colonX, y, { align: 'center' })
+    y += LINE_HEIGHT_PT * 2
 
-  pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST')
-  heightLeft -= pageHeight
+    pdf.setFont(PDF_FONT_FAMILY, 'normal')
+    y = ensureSpace(pdf, y, LINE_HEIGHT_PT * Math.max(1, sectionLines.length), topY, bottomY)
+    y = drawWrappedJustified(
+      pdf,
+      body,
+      leftX,
+      y,
+      sectionTextWidth,
+      LINE_HEIGHT_PT,
+      PARAGRAPH_INDENT_PT,
+    )
 
-  while (heightLeft > 0) {
-    position -= pageHeight
-    pdf.addPage()
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST')
-    heightLeft -= pageHeight
+    y += BLOCK_GAP_LINES * LINE_HEIGHT_PT
   }
+
+  renderSection('AÇIKLAMALAR', layout.aciklamalar)
+  LEGAL_LABELS.forEach((label) => renderLabelBlock(label))
+  renderSection('SONUÇ VE İSTEM', layout.sonucVeIstem)
+
+  const ekLines = (layout.ekler.length > 0 ? layout.ekler : ['...']).flatMap((item, index) =>
+    splitLines(pdf, `${index + 1}. ${item}`, rightX - leftX),
+  )
+  y = ensureSpace(pdf, y, LINE_HEIGHT_PT * (ekLines.length + 2), topY, bottomY)
+  pdf.setFont(PDF_FONT_FAMILY, 'bold')
+  pdf.text('EKLER', leftX, y)
+  y += LINE_HEIGHT_PT * 2
+  pdf.setFont(PDF_FONT_FAMILY, 'normal')
+  ekLines.forEach((line) => {
+    y = ensureSpace(pdf, y, LINE_HEIGHT_PT, topY, bottomY)
+    pdf.text(line, leftX, y)
+    y += LINE_HEIGHT_PT
+  })
 
   const totalPages = pdf.getNumberOfPages()
   pdf.setTextColor(0, 0, 0)
-  pdf.setFont('times', 'normal')
-  pdf.setFontSize(12)
+  pdf.setFont(PDF_FONT_FAMILY, 'normal')
+  pdf.setFontSize(BODY_FONT_SIZE_PT)
   for (let page = 1; page <= totalPages; page += 1) {
     pdf.setPage(page)
-    pdf.text(`${page} / ${totalPages}`, pageWidth / 2, pageHeight - 20, {
+    pdf.text(
+      `${page}/${totalPages}`,
+      pageWidth / 2,
+      pageHeight - PAGE_NUMBER_OFFSET_FROM_BOTTOM_PT,
+      {
       align: 'center',
-    })
+      },
+    )
   }
 
-  return String(pdf.output('bloburl'))
-}
-
-export function DilekcePdfStage({
-  layout,
-  sourceRef,
-  eklerBlockRef,
-  pdfEklerSpacerRef,
-}: {
-  layout: DilekceLayout
-  sourceRef: RefObject<HTMLDivElement | null>
-  eklerBlockRef: RefObject<HTMLDivElement | null>
-  pdfEklerSpacerRef: RefObject<HTMLDivElement | null>
-}) {
-  return (
-    <div className="dp-print-stage" aria-hidden>
-      <div ref={sourceRef} className="dp-paper">
-        <h1 className="dp-paper__title">{layout.title}</h1>
-        <div className="dp-paper__blank" />
-        <div className="dp-paper__blank" />
-
-        {LABELS.map((label) => (
-          <div key={label} className="dp-paper__block">
-            <p className="dp-paper__label-row">
-              <span className="dp-paper__label">{label}</span>
-              <span className="dp-paper__colon">:</span>
-              <span className="dp-paper__value">{layout.values[label]}</span>
-            </p>
-            {layout.continuations[label].map((line, idx) => (
-              <p key={`${label}-${idx}`} className="dp-paper__continuation">
-                {line}
-              </p>
-            ))}
-          </div>
-        ))}
-
-        <div className="dp-paper__block">
-          <p className="dp-paper__section-head">
-            <span>AÇIKLAMALAR</span>
-            <span className="dp-paper__section-colon">:</span>
-          </p>
-          <div className="dp-paper__blank" />
-          <p className="dp-paper__paragraph dp-paper__paragraph--indented">{layout.aciklamalar}</p>
-        </div>
-
-        <div className="dp-paper__block">
-          <p className="dp-paper__section-head">
-            <span>SONUÇ VE İSTEM</span>
-            <span className="dp-paper__section-colon">:</span>
-          </p>
-          <div className="dp-paper__blank" />
-          <p className="dp-paper__paragraph dp-paper__paragraph--indented">
-            {renderResultWithBoldDate(layout.sonucVeIstem)}
-          </p>
-        </div>
-
-        <div ref={pdfEklerSpacerRef} className="dp-paper__pdf-page-adjust" aria-hidden />
-        <div ref={eklerBlockRef} className="dp-paper__block">
-          <p className="dp-paper__section-title">EKLER</p>
-          <div className="dp-paper__blank" />
-          <ol className="dp-paper__list">
-            {(layout.ekler.length > 0 ? layout.ekler : ['...']).map((item, index) => (
-              <li key={`${item}-${index}`}>{item}</li>
-            ))}
-          </ol>
-        </div>
-      </div>
-    </div>
-  )
+  return pdf.output('blob')
 }

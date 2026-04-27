@@ -9,6 +9,9 @@ export interface DilekceFormPayload {
   cezaTutari: string
   not: string
   ihlalYeri: string
+  ihlalAdresi: string
+  ihlalIl: string
+  ihlalIlce: string
   ihlalEdenAd: string
   ihlalEdenTc: string
   olayAkisi: string
