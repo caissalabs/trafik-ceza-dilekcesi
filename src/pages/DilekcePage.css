@@ -219,6 +219,13 @@
   height: 1.5em;
 }
 
+/* PDF kesimi: EKLER bölümünü sayfa ortasından ayırmamak için yükseklik JS ile ayarlanır */
+.dp-paper__pdf-page-adjust {
+  height: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
 .dp-paper__block {
   margin-bottom: 1.5em;
 }

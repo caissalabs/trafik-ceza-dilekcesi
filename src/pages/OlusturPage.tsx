@@ -1,7 +1,17 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import type { DilekceFormPayload, DilekceResponse } from './dilekceTypes'
+import type {
+  DilekceFormPayload,
+  DilekceResponse,
+  DilekceRouteState,
+} from './dilekceTypes'
+import {
+  buildLayout,
+  DilekcePdfStage,
+  generatePdfFromStage,
+} from './dilekcePdf'
 import './OlusturPage.css'
+import './DilekcePage.css'
 
 const LOADING_STEPS = [
   'Bilgileriniz doğrulanıyor',
@@ -9,6 +19,7 @@ const LOADING_STEPS = [
   'Karayolları Trafik Kanunu maddeleri inceleniyor',
   'Emsal yargı kararları taranıyor',
   'Dilekçe metni hazırlanıyor',
+  'PDF önizlemesi hazırlanıyor',
 ] as const
 
 const STEP_INTERVAL_MS = 2200
@@ -43,12 +54,21 @@ export default function OlusturPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeStep, setActiveStep] = useState(0)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [readyForRoute, setReadyForRoute] = useState<Omit<DilekceRouteState, 'pdfUrl'> | null>(null)
   const navigate = useNavigate()
+  const sourceRef = useRef<HTMLDivElement>(null)
+  const eklerBlockRef = useRef<HTMLDivElement>(null)
+  const pdfEklerSpacerRef = useRef<HTMLDivElement>(null)
 
   const apiBase = useMemo(() => {
     const raw = import.meta.env.VITE_API_BASE_URL as string | undefined
     return raw && raw.trim().length > 0 ? raw.trim().replace(/\/+$/, '') : ''
   }, [])
+
+  const pendingLayout = useMemo(() => {
+    if (!readyForRoute) return null
+    return buildLayout(readyForRoute.form, readyForRoute.generated)
+  }, [readyForRoute])
 
   useEffect(() => {
     if (!loading) {
@@ -70,6 +90,53 @@ export default function OlusturPage() {
 
     return () => window.clearInterval(timer)
   }, [loading])
+
+  useEffect(() => {
+    if (!loading || !pendingLayout || !readyForRoute) return
+
+    let cancelled = false
+    const generateAndNavigate = async () => {
+      setError(null)
+      try {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve())
+        })
+        const target = sourceRef.current
+        if (!target) throw new Error('PDF render kaynağı bulunamadı')
+
+        const blobUrl = await generatePdfFromStage({
+          target,
+          eklerEl: eklerBlockRef.current,
+          spacer: pdfEklerSpacerRef.current,
+        })
+
+        if (cancelled) {
+          URL.revokeObjectURL(blobUrl)
+          return
+        }
+
+        navigate('/dilekce', {
+          state: {
+            ...readyForRoute,
+            pdfUrl: blobUrl,
+          } satisfies DilekceRouteState,
+        })
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'PDF hazırlanırken beklenmeyen bir hata oluştu')
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          setReadyForRoute(null)
+        }
+      }
+    }
+
+    generateAndNavigate()
+    return () => {
+      cancelled = true
+    }
+  }, [loading, navigate, pendingLayout, readyForRoute])
 
   const fillTestData = () => {
     setForm({
@@ -140,10 +207,13 @@ export default function OlusturPage() {
         throw new Error(data.error || 'Dilekçe oluşturulamadı')
       }
 
-      navigate('/dilekce', { state: { content: data.output, form: payload, generated: data.generated } })
+      setReadyForRoute({
+        content: data.output,
+        form: payload,
+        generated: data.generated,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu')
-    } finally {
       setLoading(false)
     }
   }
@@ -465,6 +535,15 @@ export default function OlusturPage() {
             </button>
           </div>
         </form>
+
+        {loading && pendingLayout ? (
+          <DilekcePdfStage
+            layout={pendingLayout}
+            sourceRef={sourceRef}
+            eklerBlockRef={eklerBlockRef}
+            pdfEklerSpacerRef={pdfEklerSpacerRef}
+          />
+        ) : null}
       </main>
     </div>
   )

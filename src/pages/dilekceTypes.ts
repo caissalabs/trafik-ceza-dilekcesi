@@ -35,4 +35,5 @@ export type DilekceRouteState = {
   content: string
   form: DilekceFormPayload
   generated: GeneratedDilekceSections
+  pdfUrl?: string
 }
