@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type {
   DilekceRouteState,
@@ -20,6 +20,7 @@ export default function DilekcePage() {
   const [pdfUrl, setPdfUrl] = useState(initialPdfUrl)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
+  const ownedPdfUrlRef = useRef<string | null>(null)
 
   const layout = useMemo(
     () => (form && generated ? buildLayout(form, generated) : null),
@@ -28,9 +29,12 @@ export default function DilekcePage() {
 
   useEffect(() => {
     return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+      if (ownedPdfUrlRef.current) {
+        URL.revokeObjectURL(ownedPdfUrlRef.current)
+        ownedPdfUrlRef.current = null
+      }
     }
-  }, [pdfUrl])
+  }, [])
 
   useEffect(() => {
     if (!layout || pdfUrl) return
@@ -46,10 +50,11 @@ export default function DilekcePage() {
           URL.revokeObjectURL(blobUrl)
           return
         }
-        setPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev)
-          return blobUrl
-        })
+        if (ownedPdfUrlRef.current) {
+          URL.revokeObjectURL(ownedPdfUrlRef.current)
+        }
+        ownedPdfUrlRef.current = blobUrl
+        setPdfUrl(blobUrl)
       } catch (err) {
         if (cancelled) return
         console.error(err)
@@ -64,6 +69,34 @@ export default function DilekcePage() {
       cancelled = true
     }
   }, [layout, pdfUrl])
+
+  const handleDownload = useCallback(
+    async (e: MouseEvent<HTMLAnchorElement>) => {
+      if (!pdfUrl) {
+        e.preventDefault()
+        return
+      }
+
+      // Blob URL download is made explicit to avoid viewer-specific failures.
+      e.preventDefault()
+      try {
+        const response = await fetch(pdfUrl)
+        if (!response.ok) throw new Error('PDF indirilemedi')
+        const blob = await response.blob()
+        const tempUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = tempUrl
+        a.download = 'trafik-cezasina-itiraz-dilekcesi.pdf'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(tempUrl)
+      } catch {
+        setPdfError('PDF indirilemedi. Lütfen tekrar deneyin.')
+      }
+    },
+    [pdfUrl],
+  )
 
   if (!layout) {
     return (
@@ -91,9 +124,7 @@ export default function DilekcePage() {
             href={pdfUrl || '#'}
             download="trafik-cezasina-itiraz-dilekcesi.pdf"
             className={`dp-primary-btn${!pdfUrl ? ' dp-primary-btn--disabled' : ''}`}
-            onClick={(e) => {
-              if (!pdfUrl) e.preventDefault()
-            }}
+            onClick={handleDownload}
           >
             PDF indir
           </a>
