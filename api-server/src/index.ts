@@ -50,6 +50,14 @@ type DilekceForm = {
   ekler: string[]
 }
 
+// 3 fields the model generates
+type ModelResponse = {
+  konu: string
+  aciklamalar: string
+  sonucVeIstem: string
+}
+
+// Full output returned to frontend (remaining fields filled by backend)
 type DilekceModelOutput = {
   mahkeme: string
   kararinaItirazEdilen: string
@@ -142,76 +150,87 @@ function normalizeForm(raw: unknown): DilekceForm {
 }
 
 function buildDilekcePrompt(form: DilekceForm): string {
+  const inputQuality = (form.olayAkisi.split(' ').filter(Boolean).length) < 5 ? 'low' : 'normal'
+
   return `
-Sen Türkiye trafik hukuku uzmanı gibi davran.
 Sadece geçerli JSON üret. Markdown, açıklama, code block yazma.
 
 JSON şeması:
 {
-  "mahkeme": "string",
-  "kararinaItirazEdilen": "string",
   "konu": "string",
-  "hukukiNedenler": "string",
-  "hukukiDeliller": ["string", "string"],
   "aciklamalar": "string",
   "sonucVeIstem": "string"
 }
 
 Kurallar:
-- "mahkeme": örn "KARŞIYAKA NÖBETÇİ SULH CEZA HAKİMLİĞİ"
-- "kararinaItirazEdilen": cezayı düzenleyen birime göre idareyi belirle.
-- "konu": tek paragraf kısa resmi özet.
-- "hukukiNedenler": kısa resmi metin.
-- "hukukiDeliller": en az 2 maddelik dizi döndür (kısa).
-- "aciklamalar": yalnızca açıklamalar paragrafı (uzun, resmi, tutarlı).
-- "sonucVeIstem": yalnızca sonuç ve istem paragrafı (uzun, resmi, talep net).
-- Bilinmeyen bilgi için "..." kullan.
+- "konu": Ceza bilgileri temel alınarak tek cümlelik resmi konu özeti.
+- "aciklamalar": Kullanıcının olay akışı metnini resmi dilekçe diline dönüştür. Yeni olay, yeni iddia veya hukuki yorum EKLEME.
+- "sonucVeIstem": Resmi talep paragrafı. Cezanın iptali istenir, kısa ve net.
+- Input kalitesi: ${inputQuality}
 
-KULLANICI VERİLERİ:
+CEZA BİLGİLERİ:
 - Cezayı Düzenleyen Birim: ${form.birim || '...'}
-- Seri No: ${form.seriNo || '...'}
-- Sıra No: ${form.siraNo || '...'}
 - Araç Plakası: ${form.plaka || '...'}
 - Ceza Tarihi: ${form.tarih || '...'}
 - Ceza Saati: ${form.saat || '...'}
 - İhlal Edilen Kanun Maddesi: ${form.ihlalMaddesi || '...'}
 - Toplam Ceza Tutarı: ${form.cezaTutari || '...'}
-- Tutanaktaki Notlar: ${form.not || '...'}
-- İhlalin Yeri: ${form.ihlalYeri || '...'}
-- İhlalin Adresi: ${form.ihlalAdresi || '...'}
-- İl: ${form.ihlalIl || '...'}
-- İlçe: ${form.ihlalIlce || '...'}
+- İhlalin Adresi: ${form.ihlalAdresi || '...'}, ${form.ihlalIlce || '...'}/${form.ihlalIl || '...'}
 - İhlal Eden Ad Soyad: ${form.ihlalEdenAd || '...'}
-- İhlal Eden T.C. No: ${form.ihlalEdenTc || '...'}
-- Olay Akışı ve Ek Hususlar: ${form.olayAkisi || '...'}
-- Ekler: ${form.ekler.length > 0 ? form.ekler.join(', ') : '...'}
+
+KULLANICI AÇIKLAMASI:
+${form.olayAkisi || '(kullanıcı açıklama girmedi)'}
 `.trim()
 }
 
-function parseModelOutput(text: string): DilekceModelOutput {
-  const fallback: DilekceModelOutput = {
-    mahkeme: '... NÖBETÇİ SULH CEZA HAKİMLİĞİ',
-    kararinaItirazEdilen: '...',
-    konu: '...',
-    hukukiNedenler: '...',
-    hukukiDeliller: ['...'],
-    aciklamalar: '...',
-    sonucVeIstem: '...',
+function deriveKararinaItirazEdilen(birim: string): string {
+  const upper = birim.toLocaleUpperCase('tr-TR')
+  if (upper.includes('JANDARMA')) return 'İLGİLİ İL JANDARMA KOMUTANLIĞI'
+  if (upper.includes('EMNİYET') || upper.includes('POLİS') || upper.includes('TRAFİK'))
+    return 'İLGİLİ İL EMNİYET MÜDÜRLÜĞÜ'
+  if (upper.includes('BELEDİYE')) return 'İLGİLİ BELEDİYE BAŞKANLIĞI'
+  if (birim.trim()) return birim.trim().toLocaleUpperCase('tr-TR')
+  return 'İLGİLİ İDARE'
+}
+
+function deriveHukukiNedenler(ihlalMaddesi: string): string {
+  const base =
+    '2918 Sayılı Karayolları Trafik Kanunu ve ilgili yönetmelik hükümleri uyarınca itiraz hakkı kullanılmaktadır.'
+  const madde = ihlalMaddesi.trim()
+  if (madde) {
+    return `${base} İtiraz konusu ceza, KTK ${madde} maddesi kapsamında uygulanmıştır.`
+  }
+  return base
+}
+
+function deriveHukukiDeliller(form: DilekceForm): string[] {
+  const deliller = ['Trafik ceza tutanağı', 'Araç tescil belgesi']
+  if (form.ekler.length > 0) {
+    deliller.push(...form.ekler)
+  } else {
+    deliller.push('Sair deliller')
+  }
+  return deliller
+}
+
+function parseModelOutput(text: string, form: DilekceForm): ModelResponse {
+  const fallbackKonu = form.ihlalMaddesi
+    ? `${form.tarih || '...'} tarihinde ${form.ihlalIl || '...'} ilinde düzenlenen KTK ${form.ihlalMaddesi} maddesi kapsamındaki trafik cezasına itiraz.`
+    : 'Trafik cezasına itiraz.'
+
+  const fallback: ModelResponse = {
+    konu: fallbackKonu,
+    aciklamalar:
+      form.olayAkisi.trim() ||
+      'Tarafıma kesilen trafik cezasının hukuka aykırı olduğu değerlendirilmektedir.',
+    sonucVeIstem:
+      'Yukarıda arz edilen nedenlerle, hakkımda düzenlenen trafik cezasının iptaline karar verilmesini saygılarımla arz ve talep ederim.',
   }
 
   try {
-    const parsed = JSON.parse(text) as Partial<DilekceModelOutput>
-    const hukukiDeliller = Array.isArray(parsed.hukukiDeliller)
-      ? parsed.hukukiDeliller.map((x) => cleanText(x)).filter(Boolean)
-      : []
-
+    const parsed = JSON.parse(text) as Partial<ModelResponse>
     return {
-      mahkeme: cleanText(parsed.mahkeme) || fallback.mahkeme,
-      kararinaItirazEdilen:
-        cleanText(parsed.kararinaItirazEdilen) || fallback.kararinaItirazEdilen,
       konu: cleanText(parsed.konu) || fallback.konu,
-      hukukiNedenler: cleanText(parsed.hukukiNedenler) || fallback.hukukiNedenler,
-      hukukiDeliller: hukukiDeliller.length > 0 ? hukukiDeliller : fallback.hukukiDeliller,
       aciklamalar: cleanText(parsed.aciklamalar) || fallback.aciklamalar,
       sonucVeIstem: cleanText(parsed.sonucVeIstem) || fallback.sonucVeIstem,
     }
@@ -257,16 +276,41 @@ app.post('/api/dilekce', async (req, res) => {
   const input = buildDilekcePrompt(form)
 
   try {
-    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-4.1-mini'
+    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.3'
     const completion = await openai.chat.completions.create({
       model,
-      temperature: 0.3,
+      temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
-          content:
-            'Sen resmi dilekçe yazımında uzman bir hukuk asistanısın. Sadece geçerli JSON üretirsin.',
+          content: `Sen bir hukuk asistanı değilsin. Kullanıcılara hukuki tavsiye vermezsin.
+
+Görevin:
+- Kullanıcının verdiği trafik cezası bilgilerini al
+- Açıklama kısmındaki metni temel alarak resmi ve düzenli bir dilekçe dili oluştur
+
+Davranış kuralları:
+- Kullanıcının yazdığı metni KORU ancak dilbilgisi, anlatım ve akış açısından düzenle
+- Kullanıcı metni eksik, dağınık veya yetersiz ise:
+  → SADECE verilen bilgilerden çıkarım yaparak metni anlaşılır hale getir
+  → Yeni olay, yeni iddia veya yeni hukuki gerekçe EKLEME
+- Kullanıcının kastettiği durumu açık ve düzgün bir dille ifade et
+- Hukuki analiz, yorum veya yönlendirme yapma
+- Abartı, kesinlik içeren iddialar veya gerçek dışı savunmalar ekleme
+
+Güvenlik kuralları:
+- Eğer kullanıcı metni tamamen anlamsızsa:
+  → Nötr ve genel bir açıklama metni oluştur
+- Eğer metin çok kısa ise:
+  → Mevcut bilgilerden minimum anlamlı bir paragraf oluştur
+- Asla uydurma detay ekleme
+
+Output kuralları:
+- SADECE JSON döndür
+- Format dışına çıkma
+- Tüm alanları doldur
+- Türkçe yaz`,
         },
         { role: 'user', content: input },
       ],
@@ -278,11 +322,19 @@ app.post('/api/dilekce', async (req, res) => {
       return
     }
 
-    const generated = parseModelOutput(text)
+    const modelResponse = parseModelOutput(text, form)
     const mahkemeFromDb = await resolveMahkemeFromDatabase(form)
-    if (mahkemeFromDb) {
-      generated.mahkeme = mahkemeFromDb
+
+    const generated: DilekceModelOutput = {
+      mahkeme: mahkemeFromDb || "... NÖBETÇİ SULH CEZA HÂKİMLİĞİ'NE",
+      kararinaItirazEdilen: deriveKararinaItirazEdilen(form.birim),
+      konu: modelResponse.konu,
+      hukukiNedenler: deriveHukukiNedenler(form.ihlalMaddesi),
+      hukukiDeliller: deriveHukukiDeliller(form),
+      aciklamalar: modelResponse.aciklamalar,
+      sonucVeIstem: modelResponse.sonucVeIstem,
     }
+
     res.json({ output: text, generated })
   } catch (err) {
     console.error(err)
