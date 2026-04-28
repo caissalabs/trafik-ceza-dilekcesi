@@ -8,7 +8,7 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
 
-const openaiApiKey = process.env.OPENAI_API_KEY
+const openaiApiKey = process.env.OPENAI_API_KEY?.trim()
 const openai =
   openaiApiKey && openaiApiKey.trim().length > 0
     ? new OpenAI({ apiKey: openaiApiKey })
@@ -276,7 +276,7 @@ app.post('/api/dilekce', async (req, res) => {
   const input = buildDilekcePrompt(form)
 
   try {
-    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.3'
+    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.3-chat-latest'
     const completion = await openai.chat.completions.create({
       model,
       temperature: 0.2,
