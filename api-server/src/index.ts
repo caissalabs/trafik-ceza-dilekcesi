@@ -184,13 +184,8 @@ ${form.olayAkisi || '(kullanıcı açıklama girmedi)'}
 }
 
 function deriveKararinaItirazEdilen(birim: string): string {
-  const upper = birim.toLocaleUpperCase('tr-TR')
-  if (upper.includes('JANDARMA')) return 'İLGİLİ İL JANDARMA KOMUTANLIĞI'
-  if (upper.includes('EMNİYET') || upper.includes('POLİS') || upper.includes('TRAFİK'))
-    return 'İLGİLİ İL EMNİYET MÜDÜRLÜĞÜ'
-  if (upper.includes('BELEDİYE')) return 'İLGİLİ BELEDİYE BAŞKANLIĞI'
-  if (birim.trim()) return birim.trim().toLocaleUpperCase('tr-TR')
-  return 'İLGİLİ İDARE'
+  const cleaned = birim.trim()
+  return cleaned.length > 0 ? cleaned : '...'
 }
 
 function deriveHukukiNedenler(ihlalMaddesi: string): string {
