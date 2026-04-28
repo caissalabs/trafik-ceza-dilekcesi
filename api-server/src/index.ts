@@ -279,7 +279,6 @@ app.post('/api/dilekce', async (req, res) => {
     const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.3-chat-latest'
     const completion = await openai.chat.completions.create({
       model,
-      temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [
         {
